@@ -2,46 +2,66 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net;
-using System.Security.Permissions;
 
 namespace DiscordCleaner
 {
     class Program
     {
+        enum ExitCode : int
+        {
+            SUCCESS = 0,
+            USER_INTERRUPT_DETECTED = 1,
+            COULD_NOT_TERMINATE_DISCORD_PROCESS = 2,
+            COULD_NOT_TERMINATE_DISCORD_UPDATE_PROCESS = 3,
+            COULD_NOT_DELETE_DISCORD_APP_DATA = 4,
+            COULD_NOT_DELETE_DISCORD_LOCAL_APP_DATA = 5
+        }
+
         static void DrawStartScreen()
         {
             Console.Clear();
             Console.WriteLine("********************************************************************************");
-            Console.WriteLine("* Discord Cleaner v0.1 by DatMayo                                Rel. 01.05.18 *");
+            Console.WriteLine("* Discord Cleaner v0.2 by DatMayo                                Rel. 07.05.18 *");
             Console.WriteLine("* WARNING! All login credentials will be lost and must be re entered!          *");
             Console.WriteLine("*                                                                              *");
             Console.WriteLine("* GitHub: https://github.com/DatMayolein/Discord-Cleaner                       *");
+            Console.WriteLine("* Icon: https://bit.ly/2HVZx0B                                                 *");
             Console.WriteLine("********************************************************************************");
-            Console.WriteLine("");
-            Console.Write("Would you like to cleanup your Discord installation? (y/N) ");
-            ConsoleKeyInfo key = Console.ReadKey();
-            if (key.Key.ToString().ToLower() == "n")
-            {
-                Console.WriteLine("");
-                Console.WriteLine("");
-                Console.WriteLine("Operation aborted!");
-                Console.ReadKey();
-            }
-            else if (key.Key.ToString().ToLower() == "y")
-                GetProcesses();
-            else
-                DrawStartScreen();
+            Console.WriteLine();
         }
 
-        static void GetProcesses()
+        static bool CleanDiscordInstallation()
         {
-            Console.WriteLine("");
-            bool killFailed = false;
-            Console.WriteLine("");
+            Console.Write("Would you like to cleanup your Discord installation? (y/N) ");
+            ConsoleKeyInfo key = Console.ReadKey();
+            switch (key.Key.ToString().ToLower())
+            {
+                case "n":
+                    Console.WriteLine();
+                    Console.WriteLine();
+                    Console.WriteLine("Operation aborted!");
+                    Console.ReadKey();
+                    Environment.Exit((int)ExitCode.USER_INTERRUPT_DETECTED);
+                    break;
+
+                case "y":
+                    Console.WriteLine();
+                    Console.WriteLine();
+                    return true;
+
+                default:
+                    DrawStartScreen();
+                    break;
+            }
+            return false;
+        }
+
+        static void KillProcesses()
+        {
             Console.WriteLine("Searching for Discord processes... ");
             Process[] discordHandle = Process.GetProcessesByName("discord");
             Console.WriteLine(string.Format("- {0} Discord process(es)", discordHandle.Length));
-            foreach(Process p in discordHandle)
+            foreach (Process p in discordHandle)
             {
                 try
                 {
@@ -52,56 +72,43 @@ namespace DiscordCleaner
                 catch
                 {
                     Console.WriteLine("Failed");
-                    killFailed = true;
-                }
-            }
-            if (killFailed)
-            {
-                Console.WriteLine("Can not proceed, some discord processes are still running!");
-                Console.ReadKey();
-            }
-            else
-            {
-                Console.WriteLine("Killing Discord process finished...");
-                Console.WriteLine("");
-                Console.WriteLine("Searching for Discord-Update processes... ");
-                Process[] updateHandle = Process.GetProcessesByName("update");
-                Console.WriteLine(string.Format("- {0} Discord-Update process(es)", updateHandle.Length));
-                foreach (Process p in updateHandle)
-                {
-                    try
-                    {
-                        Console.Write("-> Killing Discord process...");
-                        p.Kill();
-                        Console.WriteLine("OK");
-                    }
-                    catch
-                    {
-                        Console.WriteLine("Failed");
-                        killFailed = true;
-                    }
-                }
-                if (killFailed)
-                {
-                    Console.WriteLine("Can not proceed, some discord processes are still running!");
+                    Console.Write("Process could not be killed, aborting...");
                     Console.ReadKey();
-                }
-                else
-                {
-                    Console.WriteLine("Killing Discord-Update process finished...");
-                    Console.WriteLine("");
-                    Console.Write("Now waiting for 5 seconds...");
-                    System.Threading.Thread.Sleep(5000); //Necessary, for whatever reason
-                    Console.WriteLine("OK");
-                    Console.WriteLine("");
-                    RemoveDiscord();
+                    Environment.Exit((int)ExitCode.COULD_NOT_TERMINATE_DISCORD_PROCESS);
                 }
             }
+
+            Console.WriteLine("Killing Discord process finished...");
+            Console.WriteLine();
+            Console.WriteLine("Searching for Discord-Update processes... ");
+            Process[] updateHandle = Process.GetProcessesByName("update");
+            Console.WriteLine(string.Format("- {0} Discord-Update process(es)", updateHandle.Length));
+            foreach (Process p in updateHandle)
+            {
+                try
+                {
+                    Console.Write("-> Killing Discord process...");
+                    p.Kill();
+                    Console.WriteLine("OK");
+                }
+                catch
+                {
+                    Console.WriteLine("Failed");
+                    Console.Write("Process could not be killed, aborting...");
+                    Console.ReadKey();
+                    Environment.Exit((int)ExitCode.COULD_NOT_TERMINATE_DISCORD_PROCESS);
+                }
+            }
+            Console.WriteLine("Killing Discord-Update process finished...");
+            Console.WriteLine();
+            Console.Write("Now waiting for 5 seconds...");
+            System.Threading.Thread.Sleep(5000); //Necessary, for whatever reason
+            Console.WriteLine("OK");
+            Console.WriteLine();
         }
 
         static void RemoveDiscord()
         {
-            bool deleteFailed = false;
             string discordAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\discord";
             string discordLocalAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "\\discord";
             Console.WriteLine(string.Format("Checking folder \"{0}\"", discordAppData));
@@ -113,59 +120,60 @@ namespace DiscordCleaner
                     Directory.Delete(discordAppData, true);
                     Console.WriteLine("OK");
                 }
-                catch (Exception ex)
+                catch
                 {
-                    deleteFailed = true;
                     Console.WriteLine("Failed");
-                    Console.Write(ex.Message);
-                }
-            }
-            if (deleteFailed)
-            {
-                Console.WriteLine("Can not proceed, some discord files may remain!");
-                Console.ReadKey();
-            }
-            else
-            {
-                Console.WriteLine("");
-                Console.WriteLine(string.Format("Checking folder \"{0}\"", discordLocalAppData));
-                if (Directory.Exists(discordLocalAppData))
-                {
-                    Console.Write("Found existing discord in localappdata-folder, deleting it...");
-                    try
-                    {
-                        Directory.Delete(discordLocalAppData, true);
-                        Console.WriteLine("OK");
-                    }
-                    catch (Exception ex)
-                    {
-                        deleteFailed = true;
-                        Console.WriteLine("Failed");
-                        Console.Write(ex.Message);
-                    }
-                }
-                if (deleteFailed)
-                {
-                    Console.WriteLine("Can not proceed, some discord files may remain!");
+                    Console.Write("Process could not be killed, aborting...");
                     Console.ReadKey();
-                }
-                else
-                {
-                    Console.WriteLine("");
-                    DownloadDiscordSetup();
+                    Environment.Exit((int)ExitCode.COULD_NOT_DELETE_DISCORD_APP_DATA);
                 }
             }
+
+            Console.WriteLine();
+            Console.WriteLine(string.Format("Checking folder \"{0}\"", discordLocalAppData));
+            if (Directory.Exists(discordLocalAppData))
+            {
+                Console.Write("Found existing discord in localappdata-folder, deleting it...");
+                try
+                {
+                    Directory.Delete(discordLocalAppData, true);
+                    Console.WriteLine("OK");
+                }
+                catch
+                {
+                    Console.WriteLine("Failed");
+                    Console.Write("Process could not be killed, aborting...");
+                    Console.ReadKey();
+                    Environment.Exit((int)ExitCode.COULD_NOT_DELETE_DISCORD_LOCAL_APP_DATA);
+                }
+            }
+            Console.WriteLine();
         }
 
         static void DownloadDiscordSetup()
         {
-            Console.Write("Downloading new Discord-Version (this can take some time)...");
+            Console.Write("Downloading new Discord-Version (this can take some time)... ");
             WebClient client = new WebClient();
-            byte[] DiscordSetup = client.DownloadData("https://discordapp.com/api/download?platform=win");
-            File.WriteAllBytes("DiscordSetup.exe", DiscordSetup);
-            Console.WriteLine("Finished");
-            Console.WriteLine("");
-            InstallDiscord();
+            int currentProgress = 0;
+            client.DownloadProgressChanged += (s, e) =>
+            {
+                if(currentProgress < e.ProgressPercentage)
+                {
+                    currentProgress = e.ProgressPercentage;
+                    Console.SetCursorPosition(61, Console.CursorTop);
+                    Console.Write(string.Format("{0}%", currentProgress));
+                }
+            };
+            client.DownloadFileCompleted += (s, e) =>
+            {
+                Console.SetCursorPosition(60, Console.CursorTop);
+                Console.WriteLine("Finished!");
+                Console.WriteLine();
+                InstallDiscord();
+            };
+            client.DownloadFileAsync(new Uri("https://discordapp.com/api/download?platform=win"), "DiscordSetup.exe");
+            while(true)
+                Console.ReadKey();
         }
 
         static void InstallDiscord()
@@ -175,23 +183,23 @@ namespace DiscordCleaner
             process.StartInfo.FileName = "DiscordSetup.exe";
             process.Start();
             process.WaitForExit();// Waits here for the process to exit.
-            Console.WriteLine("Finished");
-            Console.WriteLine("");
-            Console.WriteLine("All Done! Discord will start automatically.");
-            Console.ReadKey();
-        }
-
-        static void DownloadFinished()
-        {
-            //Console
+            Console.WriteLine("Finished!");
+            Console.WriteLine();
+            Console.Write("All Done! Discord will start automatically.");
             Console.ReadKey();
         }
 
         static void Main(string[] args)
         {
             Console.Title = "Discord Cleaner";
-            Console.SetWindowSize(80, 40);
             DrawStartScreen();
+            if(CleanDiscordInstallation())
+            {
+                KillProcesses();
+                RemoveDiscord();
+                DownloadDiscordSetup();
+                
+            }
         }
     }
 }
